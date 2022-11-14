@@ -25,6 +25,7 @@ export interface SentryTransportOptions
   sentry?: Sentry.NodeOptions;
   levelsMap?: SeverityOptions;
   skipSentryInit?: boolean;
+  useErrorLevelMessages?: boolean;
 }
 
 interface SeverityOptions {
@@ -44,6 +45,7 @@ class ExtendedError extends Error {
 
 export default class SentryTransport extends TransportStream {
   public silent = false;
+  public useErrorLevelMessages = false;
 
   private levelsMap: SeverityOptions = {};
 
@@ -52,6 +54,7 @@ export default class SentryTransport extends TransportStream {
 
     this.levelsMap = this.setLevelsMap(opts && opts.levelsMap);
     this.silent = (opts && opts.silent) || false;
+    this.useErrorLevelMessages = (opts && opts.useErrorLevelMessages) || false;
 
     if (!opts || !opts.skipSentryInit) {
       Sentry.init(SentryTransport.withDefaults(opts && opts.sentry || {}));
@@ -97,10 +100,13 @@ export default class SentryTransport extends TransportStream {
 
     // Capturing Errors / Exceptions
     if (SentryTransport.shouldLogException(sentryLevel)) {
-      const error =
-        Object.values(info).find((value) => value instanceof Error) ??
-        new ExtendedError(info);
-      Sentry.captureException(error, { tags });
+      const error = info instanceof Error ? info :
+        Object.values(info).find((value) => value instanceof Error);
+      if (!error && this.useErrorLevelMessages) {
+        Sentry.captureMessage(message, sentryLevel);
+      } else {
+        Sentry.captureException(error ?? new ExtendedError(info), { tags });
+      }
 
       return callback();
     }
